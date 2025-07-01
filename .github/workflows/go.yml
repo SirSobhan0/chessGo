@@ -9,6 +9,9 @@ on:
   push:
     tags:
       - 'v*' # Trigger on tags that start with 'v', e.g., v1.0, v1.1.0
+# Add this permissions block
+permissions:
+  contents: write # This is required to create a release
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
