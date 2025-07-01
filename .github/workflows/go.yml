@@ -1,7 +1,7 @@
 # .github/workflows/release.yml
 
 # Name of the workflow
-name: Release chessGo
+name: Release Go Project
 
 # Controls when the action will run. 
 # This workflow runs manually and when a new tag is pushed.
@@ -16,6 +16,10 @@ jobs:
   release:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
+    
+    # Add this permissions block
+    permissions:
+      contents: write # This is required to create a release
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -44,3 +48,4 @@ jobs:
           # The GITHUB_TOKEN is a special token provided by GitHub Actions
           # It's required to create the release on your repository
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
