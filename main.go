@@ -84,44 +84,51 @@ func NewGame() *Game {
 	return g
 }
 
-// drawBoard renders the entire TUI to the screen.
+// drawBoard renders the entire TUI to the screen using 256 colors.
 func (g *Game) drawBoard() {
 	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+
+	// Define 256-color palette
+	lightSquareBg := termbox.Attribute(223) // A light, sandy color
+	darkSquareBg := termbox.Attribute(173)  // A brownish color
+	selectedBg := termbox.Attribute(68)     // A medium blue
+	legalMoveBg := termbox.Attribute(155)   // A light green
+
 	// Draw board squares and pieces
 	for y := 0; y < 8; y++ {
 		for x := 0; x < 8; x++ {
-			bg := termbox.ColorGreen
+			bg := lightSquareBg
 			if (x+y)%2 == 0 {
-				bg = termbox.ColorDarkGray
+				bg = darkSquareBg
 			}
 
 			// Highlight selected piece's square
 			if x == g.selectedX && y == g.selectedY {
-				bg = termbox.ColorRed
+				bg = selectedBg
 			} else if g.legalMoves[fmt.Sprintf("%d,%d", x, y)] {
 				// Highlight legal move squares
-				bg = termbox.ColorYellow
+				bg = legalMoveBg
 			}
 
-			termbox.SetCell(x*4+2, y*2+1, ' ', termbox.ColorDefault, bg)
-			termbox.SetCell(x*4+3, y*2+1, ' ', termbox.ColorDefault, bg)
-			termbox.SetCell(x*4+4, y*2+1, ' ', termbox.ColorDefault, bg)
-			termbox.SetCell(x*4+2, y*2+2, ' ', termbox.ColorDefault, bg)
-			termbox.SetCell(x*4+3, y*2+2, ' ', termbox.ColorDefault, bg)
-			termbox.SetCell(x*4+4, y*2+2, ' ', termbox.ColorDefault, bg)
+			// Draw the 2x2 cell for the board square
+			for i := 0; i < 2; i++ {
+				for j := 0; j < 4; j++ {
+					termbox.SetCell(x*4+j, y*2+i, ' ', termbox.ColorDefault, bg)
+				}
+			}
 
 			if piece := g.board[y][x]; piece != nil {
 				fg := termbox.ColorWhite
 				if piece.color == "black" {
 					fg = termbox.ColorBlack
 				}
-				termbox.SetCell(x*4+3, y*2+1, piece.symbol, fg, bg)
+				termbox.SetCell(x*4+1, y*2, piece.symbol, fg, bg)
 			}
 		}
 	}
 	// Draw cursor
-	termbox.SetCell(g.cursorX*4+1, g.cursorY*2+1, '>', termbox.ColorRed, termbox.ColorDefault)
-	termbox.SetCell(g.cursorX*4+5, g.cursorY*2+1, '<', termbox.ColorRed, termbox.ColorDefault)
+	termbox.SetCell(g.cursorX*4, g.cursorY*2, '>', termbox.ColorRed, termbox.ColorDefault)
+	termbox.SetCell(g.cursorX*4+3, g.cursorY*2, '<', termbox.ColorRed, termbox.ColorDefault)
 
 	// Draw message bar
 	for i, r := range g.message {
@@ -226,8 +233,8 @@ func (g *Game) play(conn net.Conn, player string) {
 			}
 		case termbox.EventMouse:
 			// Convert pixel coordinates to board coordinates
-			g.cursorX = (ev.MouseX - 2) / 4
-			g.cursorY = (ev.MouseY - 1) / 2
+			g.cursorX = ev.MouseX / 4
+			g.cursorY = ev.MouseY / 2
 			if g.cursorX < 0 {
 				g.cursorX = 0
 			}
@@ -337,6 +344,8 @@ func main() {
 		panic(err)
 	}
 	defer termbox.Close()
+	// Set output mode to 256 colors
+	termbox.SetOutputMode(termbox.Output256)
 	termbox.SetInputMode(termbox.InputEsc | termbox.InputMouse)
 
 	game := NewGame()
