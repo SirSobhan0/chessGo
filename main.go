@@ -17,18 +17,93 @@ type Piece struct {
 	symbol rune
 }
 
+// Theme defines the color scheme for the TUI.
+type Theme struct {
+	Name          string
+	LightSquareBg termbox.Attribute
+	DarkSquareBg  termbox.Attribute
+	SelectedBg    termbox.Attribute
+	LegalMoveBg   termbox.Attribute
+	CursorFg      termbox.Attribute
+	MessageFg     termbox.Attribute
+	WhitePieceFg  termbox.Attribute
+	BlackPieceFg  termbox.Attribute
+}
+
+// Predefined color themes, revised for better contrast and variety.
+var themes = []Theme{
+	{
+		Name:          "Walnut",
+		LightSquareBg: termbox.Attribute(223), // Light, sandy color
+		DarkSquareBg:  termbox.Attribute(130), // Rich, dark brown
+		SelectedBg:    termbox.Attribute(22),  // Deep Green
+		LegalMoveBg:   termbox.Attribute(57),  // Muted Blue
+		CursorFg:      termbox.ColorRed,
+		MessageFg:     termbox.ColorDefault,
+		WhitePieceFg:  termbox.Attribute(255), // Bright White
+		BlackPieceFg:  termbox.Attribute(232), // Off-black
+	},
+	{
+		Name:          "Ocean",
+		LightSquareBg: termbox.Attribute(117), // Light Seafoam
+		DarkSquareBg:  termbox.Attribute(24),  // Deep Ocean Blue
+		SelectedBg:    termbox.Attribute(226), // Bright Yellow
+		LegalMoveBg:   termbox.Attribute(201), // Bright Magenta
+		CursorFg:      termbox.ColorYellow,
+		MessageFg:     termbox.ColorDefault,
+		WhitePieceFg:  termbox.ColorWhite,
+		BlackPieceFg:  termbox.ColorBlack,
+	},
+	{
+		Name:          "Forest",
+		LightSquareBg: termbox.Attribute(193), // Light, leafy green
+		DarkSquareBg:  termbox.Attribute(22),  // Dark, forest green
+		SelectedBg:    termbox.Attribute(208), // Bright Orange
+		LegalMoveBg:   termbox.Attribute(135), // Purple
+		CursorFg:      termbox.ColorRed,
+		MessageFg:     termbox.ColorDefault,
+		WhitePieceFg:  termbox.Attribute(231), // Off-white
+		BlackPieceFg:  termbox.Attribute(232), // Off-black
+	},
+	{
+		Name:          "Stone",
+		LightSquareBg: termbox.Attribute(252), // Light gray marble
+		DarkSquareBg:  termbox.Attribute(238), // Dark gray granite
+		SelectedBg:    termbox.Attribute(160), // Red
+		LegalMoveBg:   termbox.Attribute(21),  // Blue
+		CursorFg:      termbox.ColorYellow,
+		MessageFg:     termbox.ColorDefault,
+		WhitePieceFg:  termbox.ColorBlack,
+		BlackPieceFg:  termbox.ColorWhite,
+	},
+	{
+		Name:          "Terminal",
+		LightSquareBg: termbox.ColorDefault,
+		DarkSquareBg:  termbox.ColorDefault,
+		SelectedBg:    termbox.ColorGreen,
+		LegalMoveBg:   termbox.ColorYellow,
+		CursorFg:      termbox.ColorRed,
+		MessageFg:     termbox.ColorDefault,
+		WhitePieceFg:  termbox.ColorWhite,
+		BlackPieceFg:  termbox.ColorBlack,
+	},
+}
+
 // Game represents the entire state of the chess game.
 type Game struct {
-	board         [8][8]*Piece
-	currentPlayer string
-	gameOver      bool
-	lock          sync.Mutex
-	cursorX       int
-	cursorY       int
-	selectedX     int
-	selectedY     int
-	message       string
-	legalMoves    map[string]bool // Stores legal moves for the selected piece
+	board             [8][8]*Piece
+	currentPlayer     string
+	gameOver          bool
+	lock              sync.Mutex
+	cursorX           int
+	cursorY           int
+	selectedX         int
+	selectedY         int
+	message           string
+	legalMoves        map[string]bool // Stores legal moves for the selected piece
+	currentThemeIndex int
+	squareWidth       int
+	squareHeight      int
 }
 
 // Unicode characters for chess pieces
@@ -50,12 +125,15 @@ var pieces = map[string]rune{
 // NewGame initializes a new game with the standard chess starting position.
 func NewGame() *Game {
 	g := &Game{
-		currentPlayer: "white",
-		gameOver:      false,
-		selectedX:     -1,
-		selectedY:     -1,
-		message:       "Welcome! White's turn.",
-		legalMoves:    make(map[string]bool),
+		currentPlayer:     "white",
+		gameOver:          false,
+		selectedX:         -1,
+		selectedY:         -1,
+		message:           "Welcome! White's turn. Press 'c' to change theme.",
+		legalMoves:        make(map[string]bool),
+		currentThemeIndex: 0,
+		squareWidth:       8, // Kept squares large
+		squareHeight:      4, // Kept squares large
 	}
 
 	// Set up the board with pieces
@@ -86,53 +164,58 @@ func NewGame() *Game {
 
 // drawBoard renders the entire TUI to the screen using 256 colors.
 func (g *Game) drawBoard() {
-	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+	// Lock the game state to prevent race conditions with the network goroutine
+	g.lock.Lock()
+	defer g.lock.Unlock()
 
-	// Define 256-color palette
-	lightSquareBg := termbox.Attribute(223) // A light, sandy color
-	darkSquareBg := termbox.Attribute(173)  // A brownish color
-	selectedBg := termbox.Attribute(68)     // A medium blue
-	legalMoveBg := termbox.Attribute(155)   // A light green
+	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+	theme := themes[g.currentThemeIndex]
 
 	// Draw board squares and pieces
 	for y := 0; y < 8; y++ {
 		for x := 0; x < 8; x++ {
-			bg := lightSquareBg
+			bg := theme.LightSquareBg
 			if (x+y)%2 == 0 {
-				bg = darkSquareBg
+				bg = theme.DarkSquareBg
 			}
 
-			// Highlight selected piece's square
 			if x == g.selectedX && y == g.selectedY {
-				bg = selectedBg
+				bg = theme.SelectedBg
 			} else if g.legalMoves[fmt.Sprintf("%d,%d", x, y)] {
-				// Highlight legal move squares
-				bg = legalMoveBg
+				bg = theme.LegalMoveBg
 			}
 
-			// Draw the 2x2 cell for the board square
-			for i := 0; i < 2; i++ {
-				for j := 0; j < 4; j++ {
-					termbox.SetCell(x*4+j, y*2+i, ' ', termbox.ColorDefault, bg)
+			// Draw the larger cell for the board square
+			for i := 0; i < g.squareHeight; i++ {
+				for j := 0; j < g.squareWidth; j++ {
+					termbox.SetCell(x*g.squareWidth+j, y*g.squareHeight+i, ' ', termbox.ColorDefault, bg)
 				}
 			}
 
 			if piece := g.board[y][x]; piece != nil {
-				fg := termbox.ColorWhite
+				fg := theme.WhitePieceFg
 				if piece.color == "black" {
-					fg = termbox.ColorBlack
+					fg = theme.BlackPieceFg
 				}
-				termbox.SetCell(x*4+1, y*2, piece.symbol, fg, bg)
+
+				// Center the piece symbol within the large square.
+				pieceX := x*g.squareWidth + (g.squareWidth / 2) - 1
+				pieceY := y*g.squareHeight + (g.squareHeight / 2) - 1
+				termbox.SetCell(pieceX, pieceY, piece.symbol, fg, bg)
 			}
 		}
 	}
-	// Draw cursor
-	termbox.SetCell(g.cursorX*4, g.cursorY*2, '>', termbox.ColorRed, termbox.ColorDefault)
-	termbox.SetCell(g.cursorX*4+3, g.cursorY*2, '<', termbox.ColorRed, termbox.ColorDefault)
+	// Draw cursor on the edges of the square
+	cursorYPos := g.cursorY*g.squareHeight + (g.squareHeight / 2) - 1
+	termbox.SetCell(g.cursorX*g.squareWidth, cursorYPos, '>', theme.CursorFg, termbox.ColorDefault)
+	termbox.SetCell(g.cursorX*g.squareWidth+g.squareWidth-1, cursorYPos, '<', theme.CursorFg, termbox.ColorDefault)
 
-	// Draw message bar
-	for i, r := range g.message {
-		termbox.SetCell(i, 18, r, termbox.ColorDefault, termbox.ColorDefault)
+	// Draw message bar below the board
+	messageY := g.squareHeight*8 + 2
+	themeName := fmt.Sprintf("Theme: %s | ", theme.Name)
+	fullMessage := themeName + g.message
+	for i, r := range fullMessage {
+		termbox.SetCell(i, messageY, r, theme.MessageFg, termbox.ColorDefault)
 	}
 	termbox.Flush()
 }
@@ -168,28 +251,25 @@ func (g *Game) applyMove(fromY, fromX, toY, toX int) {
 func (g *Game) handleMouseClick(playerColor string) string {
 	x, y := g.cursorX, g.cursorY
 
-	// If it's not the player's turn, do nothing
 	if g.currentPlayer != playerColor {
 		g.message = "Not your turn!"
 		return ""
 	}
 
-	// If a piece is already selected
 	if g.selectedX != -1 {
-		// Check if the click is a legal move
 		if g.legalMoves[fmt.Sprintf("%d,%d", x, y)] {
 			moveStr := fmt.Sprintf("%c%d%c%d", 'a'+rune(g.selectedX), 8-g.selectedY, 'a'+rune(x), 8-y)
 			g.applyMove(g.selectedY, g.selectedX, y, x)
-			g.selectedX, g.selectedY = -1, -1 // Deselect
+			g.selectedX, g.selectedY = -1, -1
 			g.legalMoves = make(map[string]bool)
 			return moveStr
 		} else {
-			g.selectedX, g.selectedY = -1, -1 // Deselect on invalid move click
+			g.selectedX, g.selectedY = -1, -1
 			g.legalMoves = make(map[string]bool)
 			g.message = "Move cancelled."
 			return ""
 		}
-	} else { // If no piece is selected, try to select one
+	} else {
 		piece := g.board[y][x]
 		if piece != nil && piece.color == g.currentPlayer {
 			g.selectedX, g.selectedY = x, y
@@ -204,7 +284,6 @@ func (g *Game) handleMouseClick(playerColor string) string {
 
 // play is the main game loop.
 func (g *Game) play(conn net.Conn, player string) {
-	// Goroutine to listen for network messages
 	go func() {
 		reader := bufio.NewReader(conn)
 		for {
@@ -222,7 +301,6 @@ func (g *Game) play(conn net.Conn, player string) {
 		}
 	}()
 
-	// Main event loop for TUI
 	for !g.gameOver {
 		g.drawBoard()
 		switch ev := termbox.PollEvent(); ev.Type {
@@ -231,10 +309,13 @@ func (g *Game) play(conn net.Conn, player string) {
 				g.gameOver = true
 				return
 			}
+			if ev.Ch == 'c' || ev.Ch == 'C' {
+				g.currentThemeIndex = (g.currentThemeIndex + 1) % len(themes)
+				g.message = "Press 'c' to change theme." // Reset message after theme change
+			}
 		case termbox.EventMouse:
-			// Convert pixel coordinates to board coordinates
-			g.cursorX = ev.MouseX / 4
-			g.cursorY = ev.MouseY / 2
+			g.cursorX = ev.MouseX / g.squareWidth
+			g.cursorY = ev.MouseY / g.squareHeight
 			if g.cursorX < 0 {
 				g.cursorX = 0
 			}
@@ -293,7 +374,6 @@ func parseMove(move string) (int, int, int, int, bool) {
 }
 
 func main() {
-	// The initial setup needs to happen outside of termbox
 	fmt.Println("Welcome to Go Chess!")
 	fmt.Print("Do you want to (h)ost or (j)oin a game? ")
 	reader := bufio.NewReader(os.Stdin)
@@ -338,13 +418,11 @@ func main() {
 		return
 	}
 
-	// Initialize termbox
 	err = termbox.Init()
 	if err != nil {
 		panic(err)
 	}
 	defer termbox.Close()
-	// Set output mode to 256 colors
 	termbox.SetOutputMode(termbox.Output256)
 	termbox.SetInputMode(termbox.InputEsc | termbox.InputMouse)
 
